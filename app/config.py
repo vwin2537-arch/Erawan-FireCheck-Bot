@@ -18,7 +18,14 @@ class Settings(BaseSettings):
     LINE_GROUP_ID: str
 
     # Database
-    DATABASE_URL: str = "sqlite+aiosqlite:///./firms_bot.db"
+    DATABASE_URL: Optional[str] = None
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Fallback to Vercel Postgres URL if DATABASE_URL is not set
+        if not self.DATABASE_URL:
+            import os
+            self.DATABASE_URL = os.getenv("POSTGRES_URL", "sqlite+aiosqlite:///./firms_bot.db")
 
     # Monitoring Area (Thailand)
     AREA_WEST: float = 97.5

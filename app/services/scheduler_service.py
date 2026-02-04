@@ -9,10 +9,9 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 class SchedulerService:
-    # Peak hours for Thailand (local time) based on satellite overpass
     PEAK_HOURS = [
-        (2, 30, 6, 0),    # 02:30 - 06:00 (Night overpass + delay)
-        (14, 30, 18, 0),  # 14:30 - 18:00 (Day overpass + delay)
+        (1, 30, 6, 0),    # 01:30 - 06:00 (Extended Night overpass)
+        (13, 30, 18, 0),  # 13:30 - 18:00 (Extended Day overpass)
     ]
     
     def __init__(self, notification_service: NotificationService):
@@ -39,11 +38,16 @@ class SchedulerService:
         now = datetime.now(tz=ZoneInfo(settings.TIMEZONE))
         
         is_peak = self.is_peak_time(now)
-        interval = settings.CHECK_INTERVAL_PEAK if is_peak else settings.CHECK_INTERVAL_OFFPEAK
+        
+        # User requested to ONLY check during peak hours to save resources
+        if not is_peak:
+            return
+
+        interval = settings.CHECK_INTERVAL_PEAK
         
         # Run if it's the right minute according to the interval
         if now.minute % interval == 0:
-            logger.info(f"Triggering adaptive check (Is Peak: {is_peak}, Interval: {interval})")
+            logger.info(f"Triggering peak-time check (Interval: {interval})")
             try:
                 # Note: This requires a DB session. We'll need a better way to handle session
                 # lifecycle in the implementation of main.py or by passing a session factory.

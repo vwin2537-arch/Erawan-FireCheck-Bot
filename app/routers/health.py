@@ -7,18 +7,10 @@ import time
 router = APIRouter(tags=["Support"])
 
 @router.get("/health")
-async def health_check(db: AsyncSession = Depends(get_db)):
-    # Check DB
-    db_ok = False
-    try:
-        await db.execute(text("SELECT 1"))
-        db_ok = True
-    except Exception:
-        pass
-        
+async def health_check():
+    # Simple health check - no DB dependency for faster startup
     return {
         "status": "healthy",
-        "database": "ok" if db_ok else "error",
         "timestamp": time.time()
     }
 

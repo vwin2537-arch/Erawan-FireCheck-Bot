@@ -103,11 +103,27 @@ class NotificationService:
             
             await self.db.commit()
             
+            # Build satellites_found summary for scheduler
+            satellites_found = {}
+            for h in new_hotspots_data:
+                sat = h.get("satellite", "UNKNOWN")
+                if sat not in satellites_found:
+                    satellites_found[sat] = {"count": 0, "time": ""}
+                satellites_found[sat]["count"] += 1
+                # Use latest time for this satellite
+                if isinstance(h.get("acq_time"), datetime):
+                    satellites_found[sat]["time"] = h["acq_time"].strftime("%H:%M")
+                elif hasattr(h.get("acq_time"), 'strftime'):
+                    satellites_found[sat]["time"] = h["acq_time"].strftime("%H:%M")
+                else:
+                    satellites_found[sat]["time"] = str(h.get("acq_time", ""))[:5]
+            
             return {
                 "checked_at": start_time,
                 "hotspots_found": total_found,
                 "new_hotspots": new_count,
-                "notification_sent": notification_sent
+                "notification_sent": notification_sent,
+                "satellites_found": satellites_found
             }
             
         except Exception as e:

@@ -18,7 +18,9 @@ class FIRMSService:
     BASE_URL = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
     
     SOURCES = [
-        "VIIRS_SNPP_NRT"
+        "VIIRS_SNPP_NRT",
+        "VIIRS_NOAA20_NRT",
+        "VIIRS_NOAA21_NRT"
     ]
     
     def __init__(self):

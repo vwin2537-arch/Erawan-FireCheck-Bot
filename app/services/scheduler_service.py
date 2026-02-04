@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .notification_service import NotificationService
 from .line_service import LINEService
+from .firms_service import FIRMSService
 from ..config import get_settings
 from linebot.v3.messaging import TextMessage
 
@@ -16,17 +17,24 @@ class SchedulerService:
         (13, 30, 18, 0),  # 13:30 - 18:00 (Day overpass)
     ]
     
-    # How long to keep checking after finding hotspots
+    # All satellites we track
+    ALL_SATELLITES = ["VIIRS_SNPP", "VIIRS_NOAA20", "VIIRS_NOAA21"]
+    
+    # How long to keep checking after ALL satellites have reported
     GRACE_PERIOD_HOURS = 1
     
     def __init__(self, notification_service: NotificationService):
         self.notification_service = notification_service
         self.scheduler = AsyncIOScheduler(timezone=settings.TIMEZONE)
         self.line_service = LINEService()
-        # Track hotspots found during each peak period
-        self.hotspots_found_this_period = 0
-        # Track when first hotspot was found (for early sleep)
-        self.first_hotspot_found_at = None
+        
+        # Track cumulative satellite data for the period
+        # Format: {"VIIRS_SNPP": {"count": 3, "time": "02:15"}, ...}
+        self.satellite_data = {}
+        
+        # Track when all satellites have reported (for sleep timer)
+        self.all_satellites_reported_at = None
+        
         # Track if we already went to early sleep
         self.early_sleep_sent = False
         
@@ -72,11 +80,11 @@ class SchedulerService:
         if not is_peak:
             return
         
-        # Smart Sleep: If we found hotspots and 1 hour has passed, go to sleep
-        if self.first_hotspot_found_at:
-            time_since_first = now - self.first_hotspot_found_at
-            if time_since_first > timedelta(hours=self.GRACE_PERIOD_HOURS):
-                # Already checked for 1 hour after finding hotspots, sleep now
+        # Smart Sleep: If ALL satellites reported and 1 hour has passed, go to sleep
+        if self.all_satellites_reported_at:
+            time_since_complete = now - self.all_satellites_reported_at
+            if time_since_complete > timedelta(hours=self.GRACE_PERIOD_HOURS):
+                # All satellites reported and 1 hour passed, sleep now
                 if not self.early_sleep_sent:
                     await self._send_early_sleep_message()
                     self.early_sleep_sent = True
@@ -89,29 +97,84 @@ class SchedulerService:
             logger.info(f"Triggering peak-time check (Interval: {interval})")
             try:
                 result = await self.notification_service.check_and_notify()
-                # Track hotspots found during this period
+                
+                # Track new hotspots by satellite
                 if result and result.get("new_hotspots", 0) > 0:
-                    new_count = result["new_hotspots"]
-                    self.hotspots_found_this_period += new_count
-                    logger.info(f"Found {new_count} new hotspots!")
-                    # Record first hotspot time for early sleep feature
-                    if self.first_hotspot_found_at is None:
-                        self.first_hotspot_found_at = now
-                        logger.info(f"First hotspot found at {now}, will sleep after 1 hour")
+                    new_satellites = result.get("satellites_found", {})
+                    has_new_data = False
+                    
+                    for sat, data in new_satellites.items():
+                        if data["count"] > 0:
+                            # Update cumulative satellite data
+                            if sat not in self.satellite_data:
+                                self.satellite_data[sat] = {"count": 0, "time": data["time"]}
+                            self.satellite_data[sat]["count"] += data["count"]
+                            self.satellite_data[sat]["time"] = data["time"]
+                            has_new_data = True
+                    
+                    if has_new_data:
+                        # Send cumulative message
+                        await self._send_cumulative_update()
+                        
+                        # Check if all satellites have reported
+                        reported_sats = set(self.satellite_data.keys())
+                        all_sats = set(self.ALL_SATELLITES)
+                        if reported_sats >= all_sats and self.all_satellites_reported_at is None:
+                            self.all_satellites_reported_at = now
+                            logger.info(f"All 3 satellites reported! Will sleep in 1 hour.")
+                            
             except Exception as e:
                 logger.error(f"Error during scheduled check: {e}")
 
+    async def _send_cumulative_update(self):
+        """Send cumulative update message with all satellites found so far"""
+        target = settings.LINE_GROUP_ID.strip() if settings.LINE_GROUP_ID else None
+        if not target:
+            return
+            
+        try:
+            now = datetime.now(tz=ZoneInfo(settings.TIMEZONE))
+            
+            # Build satellite summary lines
+            sat_lines = []
+            total = 0
+            for sat in self.ALL_SATELLITES:
+                if sat in self.satellite_data:
+                    data = self.satellite_data[sat]
+                    sat_name = sat.replace("VIIRS_", "")
+                    sat_lines.append(f"🛰️ {sat_name} - {data['count']} จุด (ถ่าย {data['time']})")
+                    total += data["count"]
+            
+            # Count how many satellites reported
+            reported_count = len(self.satellite_data)
+            
+            message_text = f"""🔥 แจ้งเตือนจุดความร้อน
+📅 {now.strftime('%d/%m/%Y %H:%M')}
+━━━━━━━━━━━━━━━━
+{chr(10).join(sat_lines)}
+━━━━━━━━━━━━━━━━
+📍 รวม: {total} จุด ({reported_count}/3 ดาวเทียม)
+🏔️ พื้นที่: กาญจนบุรี"""
+
+            message = TextMessage(text=message_text)
+            await self.line_service.push_message(target, [message])
+            logger.info(f"Sent cumulative update: {total} hotspots from {reported_count} satellites")
+            
+        except Exception as e:
+            logger.error(f"Failed to send cumulative update: {e}")
+
     async def _send_early_sleep_message(self):
-        """Send message when going to early sleep after hotspot detection"""
+        """Send message when going to early sleep after all satellites reported"""
         target = settings.LINE_GROUP_ID.strip() if settings.LINE_GROUP_ID else None
         if target:
             try:
                 now = datetime.now(tz=ZoneInfo(settings.TIMEZONE))
+                total = sum(d["count"] for d in self.satellite_data.values())
                 message = TextMessage(
-                    text=f"😴 บอทเข้าสู่โหมดพักผ่อน\n📅 {now.strftime('%d/%m/%Y %H:%M')}\n✅ พบ {self.hotspots_found_this_period} จุดความร้อน\n💤 หลับจนถึงรอบถัดไป..."
+                    text=f"😴 บอทเข้าสู่โหมดพักผ่อน\n📅 {now.strftime('%d/%m/%Y %H:%M')}\n✅ ครบ 3 ดาวเทียม พบ {total} จุดความร้อน\n💤 หลับจนถึงรอบถัดไป..."
                 )
                 await self.line_service.push_message(target, [message])
-                logger.info("Sent early sleep message")
+                logger.info("Sent early sleep message (all satellites done)")
             except Exception as e:
                 logger.error(f"Failed to send early sleep message: {e}")
 
@@ -127,8 +190,8 @@ class SchedulerService:
     
     def _reset_period_state(self):
         """Reset all tracking variables for the next period"""
-        self.hotspots_found_this_period = 0
-        self.first_hotspot_found_at = None
+        self.satellite_data = {}
+        self.all_satellites_reported_at = None
         self.early_sleep_sent = False
     
     async def _send_heartbeat_if_needed(self, period_name: str):
@@ -138,7 +201,7 @@ class SchedulerService:
             logger.info(f"Skipping heartbeat - already sent early sleep message")
             return
             
-        if self.hotspots_found_this_period == 0:
+        if not self.satellite_data:
             # No hotspots found - send confirmation message
             target = settings.LINE_GROUP_ID.strip() if settings.LINE_GROUP_ID else None
             if target:
@@ -152,7 +215,8 @@ class SchedulerService:
                 except Exception as e:
                     logger.error(f"Failed to send heartbeat: {e}")
         else:
-            logger.info(f"Skipping heartbeat - found {self.hotspots_found_this_period} hotspots during {period_name}")
+            total = sum(d["count"] for d in self.satellite_data.values())
+            logger.info(f"Skipping heartbeat - found {total} hotspots during {period_name}")
 
     def is_peak_time(self, dt: datetime) -> bool:
         """Check if target time falls within any peak windows"""

@@ -1,0 +1,23 @@
+name: Trigger Fire Check
+on:
+  schedule:
+    - cron: '*/15 * * * *'  # Run every 15 minutes
+  workflow_dispatch:      # Allow manual trigger
+
+jobs:
+  cron:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Vercel Endpoint
+        run: |
+          # Replace with your actual Vercel project URL once deployed
+          # Example: https://erawan-firecheck-bot.vercel.app/api/check-now
+          # We use a secret or default to a placeholder loop if not set
+          
+          if [ -z "${{ secrets.VERCEL_APP_URL }}" ]; then
+            echo "VERCEL_APP_URL secret is not set. Please set it in GitHub Settings."
+            # Fallback for now - User needs to update this line or set secret
+            curl -X POST https://erawan-firecheck-bot.vercel.app/api/check-now || echo "Failed to trigger"
+          else
+            curl -X POST ${{ secrets.VERCEL_APP_URL }}/api/check-now
+          fi

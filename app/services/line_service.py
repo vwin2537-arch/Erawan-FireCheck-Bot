@@ -62,6 +62,48 @@ class LINEService:
         
         await self.push_message(to, [flex_message])
 
+    async def send_satellite_alert(
+        self,
+        to: str,
+        satellites_data: Dict[str, Dict[str, Any]],
+        all_satellites: List[str] = None
+    ):
+        """
+        Send a text-based alert with satellite breakdown
+        satellites_data format: {"VIIRS_SNPP": {"count": 3, "time": "12:45"}, ...}
+        """
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        
+        if all_satellites is None:
+            all_satellites = ["VIIRS_SNPP", "VIIRS_NOAA20", "VIIRS_NOAA21"]
+        
+        now = datetime.now(tz=ZoneInfo(settings.TIMEZONE))
+        
+        # Build satellite summary lines
+        sat_lines = []
+        total = 0
+        for sat in all_satellites:
+            if sat in satellites_data:
+                data = satellites_data[sat]
+                sat_name = sat.replace("VIIRS_", "")
+                sat_lines.append(f"🛰️ {sat_name} - {data['count']} จุด (ถ่าย {data['time']})")
+                total += data["count"]
+        
+        # Count how many satellites reported
+        reported_count = len(satellites_data)
+        
+        message_text = f"""🔥 แจ้งเตือนจุดความร้อน
+📅 {now.strftime('%d/%m/%Y %H:%M')}
+━━━━━━━━━━━━━━━━
+{chr(10).join(sat_lines)}
+━━━━━━━━━━━━━━━━
+📍 รวม: {total} จุด ({reported_count}/{len(all_satellites)} ดาวเทียม)
+🏔️ พื้นที่: กาญจนบุรี"""
+
+        message = TextMessage(text=message_text)
+        await self.push_message(to, [message])
+
     def create_hotspot_flex_message(self, summary: Dict[str, Any]) -> Dict[str, Any]:
         """
         Create Flex Message JSON structure for hotspot alert

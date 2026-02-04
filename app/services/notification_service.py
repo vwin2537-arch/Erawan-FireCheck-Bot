@@ -58,7 +58,18 @@ class NotificationService:
             batch_id = str(uuid.uuid4())
             
             if new_count > 0:
-                summary = self.create_summary(new_hotspots_data)
+                # Build satellites_found for the alert
+                satellites_for_alert = {}
+                for h in new_hotspots_data:
+                    sat = h.get("satellite", "UNKNOWN")
+                    if sat not in satellites_for_alert:
+                        satellites_for_alert[sat] = {"count": 0, "time": ""}
+                    satellites_for_alert[sat]["count"] += 1
+                    # Use latest time for this satellite
+                    if hasattr(h.get("acq_time"), 'strftime'):
+                        satellites_for_alert[sat]["time"] = h["acq_time"].strftime("%H:%M")
+                    else:
+                        satellites_for_alert[sat]["time"] = str(h.get("acq_time", ""))[:5]
                 
                 # Fetch target group ID from settings or env
                 target_to = settings.LINE_GROUP_ID.strip() if settings.LINE_GROUP_ID else None
@@ -71,7 +82,8 @@ class NotificationService:
                 
                 if target_to:
                     try:
-                        await self.line.send_hotspot_alert(target_to, summary)
+                        # Use new satellite-based text message format
+                        await self.line.send_satellite_alert(target_to, satellites_for_alert)
                         notification_sent = True
                         
                         # Log notification

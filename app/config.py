@@ -1,4 +1,6 @@
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import model_validator
 from typing import Optional
 from functools import lru_cache
 
@@ -6,26 +8,19 @@ class Settings(BaseSettings):
     # App Configuration
     APP_NAME: str = "FIRMS LINE Bot"
     APP_ENV: str = "development"
-    DEBUG: bool = True
+    DEBUG: bool = False
     SECRET_KEY: str = "your-secret-key-here"
 
     # NASA FIRMS API
-    FIRMS_MAP_KEY: str
+    FIRMS_MAP_KEY: str = ""
     
     # LINE Messaging API
-    LINE_CHANNEL_ACCESS_TOKEN: str
-    LINE_CHANNEL_SECRET: str
-    LINE_GROUP_ID: str
+    LINE_CHANNEL_ACCESS_TOKEN: str = ""
+    LINE_CHANNEL_SECRET: str = ""
+    LINE_GROUP_ID: str = ""
 
     # Database
     DATABASE_URL: Optional[str] = None
-    
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # Fallback to Vercel Postgres URL if DATABASE_URL is not set
-        if not self.DATABASE_URL:
-            import os
-            self.DATABASE_URL = os.getenv("POSTGRES_URL", "sqlite+aiosqlite:///./firms_bot.db")
 
     # Monitoring Area (Thailand)
     AREA_WEST: float = 97.5
@@ -41,6 +36,13 @@ class Settings(BaseSettings):
     # Notification Settings
     MIN_CONFIDENCE: str = "nominal"
     NOTIFY_ON_STARTUP: bool = False
+
+    @model_validator(mode='after')
+    def set_database_url(self):
+        # Fallback to Vercel Postgres URL if DATABASE_URL is not set
+        if not self.DATABASE_URL:
+            self.DATABASE_URL = os.getenv("POSTGRES_URL", "sqlite+aiosqlite:///./firms_bot.db")
+        return self
 
     model_config = SettingsConfigDict(
         env_file=".env",

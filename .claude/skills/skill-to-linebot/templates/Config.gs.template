@@ -1,0 +1,26 @@
+/**
+ * {{SKILL_NAME}} LINE Bot - 設定檔
+ * 
+ * 請將以下設定填入 Script Properties：
+ * File > Project properties > Script properties
+ */
+
+const Config = {
+  // LINE Bot
+  LINE_CHANNEL_SECRET: PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_SECRET') || '',
+  LINE_CHANNEL_ACCESS_TOKEN: PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_ACCESS_TOKEN') || '',
+  
+  // OpenAI
+  OPENAI_API_KEY: PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY') || '',
+  OPENAI_MODEL: 'gpt-4o',
+  
+  // Google Sheets
+  SPREADSHEET_ID: PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID') || '',
+  
+  // 服務設定
+  BOT_NAME: '{{SKILL_DISPLAY_NAME}}',
+  WELCOME_MESSAGE: '{{WELCOME_MESSAGE}}',
+  
+  // 可選：Vector Store（用於 RAG）
+  OPENAI_VECTOR_STORE_ID: PropertiesService.getScriptProperties().getProperty('OPENAI_VECTOR_STORE_ID') || ''
+};

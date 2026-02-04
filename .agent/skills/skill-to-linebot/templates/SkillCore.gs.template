@@ -1,0 +1,38 @@
+/**
+ * {{SKILL_NAME}} LINE Bot - Skill 核心邏輯
+ * 
+ * ⚠️ 此檔案需要根據具體 Skill 進行客製化
+ * 
+ * AI 將會根據分析的 Skill 內容填充以下區塊：
+ * - SYSTEM_PROMPT: 系統提示詞
+ * - processMessage(): 訊息處理邏輯
+ */
+
+const SkillCore = {
+  
+  // ============================================
+  // 系統提示詞（由 AI 根據 Skill 生成）
+  // ============================================
+  
+  SYSTEM_PROMPT: `{{SYSTEM_PROMPT}}`,
+  
+  // ============================================
+  // 主要處理函數
+  // ============================================
+  
+  /**
+   * 處理用戶訊息
+   * @param {string} userId - 用戶 ID
+   * @param {string} userMessage - 用戶訊息
+   * @returns {string} 回應文字
+   */
+  processMessage(userId, userMessage) {
+    {{PROCESS_MESSAGE_LOGIC}}
+  },
+  
+  // ============================================
+  // 輔助函數（可選，由 AI 根據需要添加）
+  // ============================================
+  
+  {{HELPER_FUNCTIONS}}
+};

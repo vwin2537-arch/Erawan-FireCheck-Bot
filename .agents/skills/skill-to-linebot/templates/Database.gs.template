@@ -1,0 +1,190 @@
+/**
+ * Google Sheets 資料庫操作
+ * 
+ * 此模組為通用模組，提供用戶管理和使用記錄功能
+ */
+
+const Database = {
+  
+  /**
+   * 取得試算表
+   */
+  getSpreadsheet() {
+    return SpreadsheetApp.openById(Config.SPREADSHEET_ID);
+  },
+  
+  /**
+   * 取得工作表（不存在則自動建立）
+   */
+  getSheet(name) {
+    const ss = this.getSpreadsheet();
+    let sheet = ss.getSheetByName(name);
+    
+    if (!sheet) {
+      sheet = ss.insertSheet(name);
+      this.initSheet(sheet, name);
+    }
+    
+    return sheet;
+  },
+  
+  /**
+   * 初始化工作表欄位
+   */
+  initSheet(sheet, name) {
+    const headers = {
+      'users': ['userId', 'displayName', 'joinDate', 'usageCount', 'lastUsedDate', 'state'],
+      'logs': ['id', 'userId', 'input', 'output', 'createdAt']
+    };
+    
+    if (headers[name]) {
+      sheet.getRange(1, 1, 1, headers[name].length).setValues([headers[name]]);
+      sheet.setFrozenRows(1);
+    }
+  },
+  
+  // =====================
+  // 用戶管理
+  // =====================
+  
+  /**
+   * 建立新用戶
+   */
+  createUser(userId) {
+    const existingUser = this.getUser(userId);
+    if (existingUser) return existingUser;
+    
+    const sheet = this.getSheet('users');
+    const profile = LineBot.getProfile(userId) || {};
+    
+    const userData = [
+      userId,
+      profile.displayName || '',
+      new Date().toISOString(),
+      0,    // usageCount
+      '',   // lastUsedDate
+      ''    // state (JSON)
+    ];
+    
+    sheet.appendRow(userData);
+    return this.getUser(userId);
+  },
+  
+  /**
+   * 取得用戶資料
+   */
+  getUser(userId) {
+    const sheet = this.getSheet('users');
+    const data = sheet.getDataRange().getValues();
+    
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === userId) {
+        return {
+          row: i + 1,
+          userId: data[i][0],
+          displayName: data[i][1],
+          joinDate: data[i][2],
+          usageCount: data[i][3] || 0,
+          lastUsedDate: data[i][4],
+          state: data[i][5] ? JSON.parse(data[i][5]) : null
+        };
+      }
+    }
+    
+    return null;
+  },
+  
+  /**
+   * 增加使用次數
+   */
+  incrementUsage(userId) {
+    const user = this.getUser(userId);
+    if (!user) return;
+    
+    const sheet = this.getSheet('users');
+    sheet.getRange(user.row, 4).setValue(user.usageCount + 1);
+    sheet.getRange(user.row, 5).setValue(new Date().toISOString());
+  },
+  
+  /**
+   * 設定用戶狀態（用於多輪對話）
+   */
+  setUserState(userId, state) {
+    let user = this.getUser(userId);
+    if (!user) {
+      this.createUser(userId);
+      user = this.getUser(userId);
+    }
+    
+    const sheet = this.getSheet('users');
+    sheet.getRange(user.row, 6).setValue(JSON.stringify(state));
+  },
+  
+  /**
+   * 取得用戶狀態
+   */
+  getUserState(userId) {
+    const user = this.getUser(userId);
+    return user ? user.state : null;
+  },
+  
+  /**
+   * 清除用戶狀態
+   */
+  clearUserState(userId) {
+    const user = this.getUser(userId);
+    if (!user) return;
+    
+    const sheet = this.getSheet('users');
+    sheet.getRange(user.row, 6).setValue('');
+  },
+  
+  // =====================
+  // 使用記錄
+  // =====================
+  
+  /**
+   * 儲存使用記錄
+   */
+  saveLog(userId, input, output) {
+    const sheet = this.getSheet('logs');
+    const id = Utilities.getUuid();
+    
+    sheet.appendRow([
+      id,
+      userId,
+      input.substring(0, 1000),  // 限制長度
+      output.substring(0, 5000), // 限制長度
+      new Date().toISOString()
+    ]);
+    
+    return id;
+  },
+  
+  /**
+   * 取得最近一次記錄（用於追問功能）
+   */
+  getLastLog(userId, withinMinutes = 30) {
+    const sheet = this.getSheet('logs');
+    const data = sheet.getDataRange().getValues();
+    
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (data[i][1] === userId) {
+        const createdAt = new Date(data[i][4]);
+        const now = new Date();
+        const diffMinutes = (now - createdAt) / (1000 * 60);
+        
+        if (diffMinutes <= withinMinutes) {
+          return {
+            input: data[i][2],
+            output: data[i][3],
+            createdAt: data[i][4]
+          };
+        }
+        break;
+      }
+    }
+    
+    return null;
+  }
+};

@@ -1,0 +1,150 @@
+/**
+ * {{SKILL_NAME}} LINE Bot - OpenAI 整合
+ * 
+ * 此模組提供 OpenAI API 呼叫功能
+ */
+
+const OpenAI = {
+  
+  /**
+   * 呼叫 Chat Completions API
+   * @param {string} userMessage - 用戶訊息
+   * @param {string} systemPrompt - 系統提示詞
+   * @param {number} maxTokens - 最大回應長度
+   * @returns {string} AI 回應文字
+   */
+  chat(userMessage, systemPrompt, maxTokens = 1000) {
+    const url = 'https://api.openai.com/v1/chat/completions';
+    
+    const payload = {
+      model: Config.OPENAI_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage }
+      ],
+      max_tokens: maxTokens,
+      temperature: 0.7
+    };
+    
+    try {
+      const response = UrlFetchApp.fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + Config.OPENAI_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true
+      });
+      
+      const result = JSON.parse(response.getContentText());
+      
+      if (result.error) {
+        Logger.log('OpenAI error: ' + result.error.message);
+        return '抱歉，AI 處理時發生錯誤：' + result.error.message;
+      }
+      
+      return result.choices[0].message.content.trim();
+      
+    } catch (e) {
+      Logger.log('OpenAI exception: ' + e);
+      return '抱歉，AI 服務暫時無法使用，請稍後再試。';
+    }
+  },
+  
+  /**
+   * 帶有對話歷史的 Chat（用於多輪對話）
+   * @param {Array} messages - 對話歷史 [{role, content}, ...]
+   * @param {string} systemPrompt - 系統提示詞
+   * @returns {string} AI 回應文字
+   */
+  chatWithHistory(messages, systemPrompt, maxTokens = 1000) {
+    const url = 'https://api.openai.com/v1/chat/completions';
+    
+    const fullMessages = [
+      { role: 'system', content: systemPrompt },
+      ...messages
+    ];
+    
+    const payload = {
+      model: Config.OPENAI_MODEL,
+      messages: fullMessages,
+      max_tokens: maxTokens,
+      temperature: 0.7
+    };
+    
+    try {
+      const response = UrlFetchApp.fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + Config.OPENAI_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true
+      });
+      
+      const result = JSON.parse(response.getContentText());
+      
+      if (result.error) {
+        Logger.log('OpenAI error: ' + result.error.message);
+        return '抱歉，AI 處理時發生錯誤。';
+      }
+      
+      return result.choices[0].message.content.trim();
+      
+    } catch (e) {
+      Logger.log('OpenAI exception: ' + e);
+      return '抱歉，AI 服務暫時無法使用，請稍後再試。';
+    }
+  },
+  
+  /**
+   * 使用 Responses API（支援 file_search / Vector Store）
+   * 注意：需要設定 OPENAI_VECTOR_STORE_ID
+   */
+  responsesWithSearch(userMessage, systemPrompt) {
+    if (!Config.OPENAI_VECTOR_STORE_ID) {
+      // 如果沒有 Vector Store，使用一般 chat
+      return this.chat(userMessage, systemPrompt);
+    }
+    
+    const url = 'https://api.openai.com/v1/responses';
+    
+    const payload = {
+      model: Config.OPENAI_MODEL,
+      input: userMessage,
+      instructions: systemPrompt,
+      tools: [{
+        type: 'file_search',
+        vector_store_ids: [Config.OPENAI_VECTOR_STORE_ID]
+      }]
+    };
+    
+    try {
+      const response = UrlFetchApp.fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + Config.OPENAI_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true
+      });
+      
+      const result = JSON.parse(response.getContentText());
+      
+      if (result.error) {
+        Logger.log('OpenAI Responses error: ' + result.error.message);
+        // 降級到一般 chat
+        return this.chat(userMessage, systemPrompt);
+      }
+      
+      return result.output_text || result.output?.[0]?.content?.[0]?.text || '無法取得回應';
+      
+    } catch (e) {
+      Logger.log('OpenAI Responses exception: ' + e);
+      return this.chat(userMessage, systemPrompt);
+    }
+  }
+};

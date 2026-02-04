@@ -1,0 +1,121 @@
+/**
+ * LINE Messaging API 封裝
+ * 
+ * 此模組為通用模組，無需修改即可使用
+ */
+
+const LineBot = {
+  
+  /**
+   * 回覆訊息（使用 replyToken，不消耗 push 額度）
+   */
+  reply(replyToken, messages) {
+    const url = 'https://api.line.me/v2/bot/message/reply';
+    
+    const options = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + Config.LINE_CHANNEL_ACCESS_TOKEN
+      },
+      payload: JSON.stringify({
+        replyToken: replyToken,
+        messages: messages
+      }),
+      muteHttpExceptions: true
+    };
+    
+    const response = UrlFetchApp.fetch(url, options);
+    return JSON.parse(response.getContentText());
+  },
+  
+  /**
+   * 主動推送訊息（消耗 push 額度）
+   */
+  push(userId, messages) {
+    const url = 'https://api.line.me/v2/bot/message/push';
+    
+    const options = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + Config.LINE_CHANNEL_ACCESS_TOKEN
+      },
+      payload: JSON.stringify({
+        to: userId,
+        messages: messages
+      }),
+      muteHttpExceptions: true
+    };
+    
+    const response = UrlFetchApp.fetch(url, options);
+    return JSON.parse(response.getContentText());
+  },
+  
+  /**
+   * 顯示思考中動畫
+   * @param {string} chatId - 用戶 ID
+   * @param {number} seconds - 持續秒數 (5-60)
+   */
+  showLoading(chatId, seconds) {
+    const url = 'https://api.line.me/v2/bot/chat/loading/start';
+    
+    const options = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + Config.LINE_CHANNEL_ACCESS_TOKEN
+      },
+      payload: JSON.stringify({
+        chatId: chatId,
+        loadingSeconds: Math.min(Math.max(seconds || 20, 5), 60)
+      }),
+      muteHttpExceptions: true
+    };
+    
+    try {
+      UrlFetchApp.fetch(url, options);
+    } catch (e) {
+      Logger.log('showLoading error: ' + e.message);
+    }
+  },
+  
+  /**
+   * 取得用戶資料
+   */
+  getProfile(userId) {
+    const url = 'https://api.line.me/v2/bot/profile/' + userId;
+    
+    const options = {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + Config.LINE_CHANNEL_ACCESS_TOKEN
+      },
+      muteHttpExceptions: true
+    };
+    
+    try {
+      const response = UrlFetchApp.fetch(url, options);
+      return JSON.parse(response.getContentText());
+    } catch (e) {
+      Logger.log('Error getting profile: ' + e);
+      return null;
+    }
+  },
+  
+  /**
+   * 建立純文字訊息
+   */
+  textMessage(text) {
+    return { type: 'text', text: text };
+  },
+  
+  /**
+   * 驗證 Webhook 簽名
+   */
+  verifySignature(body, signature) {
+    const hash = Utilities.computeHmacSha256Signature(body, Config.LINE_CHANNEL_SECRET);
+    const expectedSignature = Utilities.base64Encode(hash);
+    return signature === expectedSignature;
+  }
+};

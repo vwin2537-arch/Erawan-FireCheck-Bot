@@ -1,0 +1,152 @@
+/**
+ * {{SKILL_NAME}} LINE Bot - Webhook 入口
+ * 
+ * 純文字版本，穩定易除錯
+ */
+
+// ============================================
+// Webhook 處理
+// ============================================
+
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    Logger.log('Webhook received: ' + JSON.stringify(data));
+    
+    if (data.events) {
+      data.events.forEach(event => {
+        try {
+          handleEvent(event);
+        } catch (err) {
+          Logger.log('Event handling error: ' + err.message);
+        }
+      });
+    }
+    
+    return ContentService.createTextOutput('OK');
+  } catch (error) {
+    Logger.log('doPost error: ' + error.message);
+    return ContentService.createTextOutput('ERROR');
+  }
+}
+
+function doGet(e) {
+  return ContentService.createTextOutput(Config.BOT_NAME + ' is running!');
+}
+
+// ============================================
+// 事件處理
+// ============================================
+
+function handleEvent(event) {
+  const userId = event.source.userId;
+  const replyToken = event.replyToken;
+  
+  // 處理加好友事件
+  if (event.type === 'follow') {
+    handleFollow(userId, replyToken);
+    return;
+  }
+  
+  // 處理文字訊息
+  if (event.type === 'message' && event.message.type === 'text') {
+    const userMessage = event.message.text.trim();
+    handleTextMessage(userId, replyToken, userMessage);
+    return;
+  }
+}
+
+/**
+ * 處理新用戶加好友
+ */
+function handleFollow(userId, replyToken) {
+  // 建立用戶記錄
+  Database.createUser(userId);
+  
+  // 發送歡迎訊息
+  const welcomeText = Config.WELCOME_MESSAGE || 
+    `歡迎使用 ${Config.BOT_NAME}！\n\n直接輸入訊息即可開始使用。`;
+  
+  LineBot.reply(replyToken, [
+    LineBot.textMessage(welcomeText)
+  ]);
+}
+
+/**
+ * 處理文字訊息
+ */
+function handleTextMessage(userId, replyToken, userMessage) {
+  // 顯示思考中動畫
+  LineBot.showLoading(userId, 30);
+  
+  try {
+    // 呼叫 SkillCore 處理訊息
+    const response = SkillCore.processMessage(userId, userMessage);
+    
+    // 回覆純文字
+    LineBot.reply(replyToken, [
+      LineBot.textMessage(response)
+    ]);
+    
+    // 記錄使用
+    Database.incrementUsage(userId);
+    Database.saveLog(userId, userMessage, response);
+    
+  } catch (e) {
+    Logger.log('處理訊息錯誤：' + e.message);
+    LineBot.reply(replyToken, [
+      LineBot.textMessage('抱歉，處理您的訊息時發生錯誤，請稍後再試。')
+    ]);
+  }
+}
+
+// ============================================
+// 測試函數
+// ============================================
+
+/**
+ * 測試用：取得測試用戶 ID
+ */
+function getTestUserId() {
+  return PropertiesService.getScriptProperties().getProperty('TEST_USER_ID');
+}
+
+/**
+ * 測試 LINE 發送功能
+ */
+function testLineSend() {
+  const userId = getTestUserId();
+  if (!userId) {
+    Logger.log('請設定 TEST_USER_ID');
+    return;
+  }
+  
+  LineBot.push(userId, [
+    LineBot.textMessage('✅ LINE Bot 連接正常！')
+  ]);
+  Logger.log('✅ 測試訊息已發送');
+}
+
+/**
+ * 測試 SkillCore
+ */
+function testSkillCore() {
+  const userId = getTestUserId();
+  if (!userId) {
+    Logger.log('請設定 TEST_USER_ID');
+    return;
+  }
+  
+  try {
+    const response = SkillCore.processMessage(userId, '測試訊息');
+    LineBot.push(userId, [
+      LineBot.textMessage('✅ SkillCore 測試結果：\n\n' + response)
+    ]);
+    Logger.log('✅ SkillCore 測試完成');
+  } catch (e) {
+    LineBot.push(userId, [
+      LineBot.textMessage('❌ SkillCore 測試失敗：' + e.message)
+    ]);
+    Logger.log('❌ SkillCore 測試失敗：' + e.message);
+  }
+}

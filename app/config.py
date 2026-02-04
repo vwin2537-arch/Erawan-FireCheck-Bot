@@ -1,6 +1,4 @@
-import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import model_validator
 from typing import Optional
 from functools import lru_cache
 
@@ -19,14 +17,14 @@ class Settings(BaseSettings):
     LINE_CHANNEL_SECRET: str = ""
     LINE_GROUP_ID: str = ""
 
-    # Database
-    DATABASE_URL: Optional[str] = None
+    # Database (Railway provides DATABASE_URL automatically for Postgres)
+    DATABASE_URL: str = "sqlite+aiosqlite:///./firms_bot.db"
 
-    # Monitoring Area (Thailand)
-    AREA_WEST: float = 97.5
-    AREA_SOUTH: float = 5.5
-    AREA_EAST: float = 105.6
-    AREA_NORTH: float = 20.5
+    # Monitoring Area (Kanchanaburi)
+    AREA_WEST: float = 98.0
+    AREA_SOUTH: float = 13.4
+    AREA_EAST: float = 100.0
+    AREA_NORTH: float = 15.8
 
     # Scheduler Settings
     TIMEZONE: str = "Asia/Bangkok"
@@ -36,13 +34,6 @@ class Settings(BaseSettings):
     # Notification Settings
     MIN_CONFIDENCE: str = "nominal"
     NOTIFY_ON_STARTUP: bool = False
-
-    @model_validator(mode='after')
-    def set_database_url(self):
-        # Fallback to Vercel Postgres URL if DATABASE_URL is not set
-        if not self.DATABASE_URL:
-            self.DATABASE_URL = os.getenv("POSTGRES_URL", "sqlite+aiosqlite:///./firms_bot.db")
-        return self
 
     model_config = SettingsConfigDict(
         env_file=".env",

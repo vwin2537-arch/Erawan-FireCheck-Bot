@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Get base directory for templates (works in both local and Vercel)
+# Get base directory for templates
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 
@@ -27,31 +27,21 @@ async def lifespan(app: FastAPI):
     # Startup logic
     logger.info("Initializing application...")
     
-    # Check if we are running on Vercel
-    is_vercel = os.environ.get("VERCEL") == "1"
+    # 1. Database initialization
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database initialized successfully.")
     
-    # 1. Database initialization (wrap in try-except for serverless)
-    try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("Database initialized successfully.")
-    except Exception as e:
-        logger.error(f"Database initialization error: {e}")
-        # In serverless, we might not have a persistent database yet
-        if not is_vercel:
-            raise
+    # 2. Services setup
+    firms = FIRMSService()
+    line = LINEService()
     
-    # 2. Services setup (only for local mode)
-    if not is_vercel:
-        firms = FIRMSService()
-        line = LINEService()
-        logger.info("Starting scheduler (Local Mode)...")
-        async with AsyncSessionLocal() as session:
-            notif_service = NotificationService(firms, line, session)
-            app.state.scheduler = SchedulerService(notif_service)
-            app.state.scheduler.start()
-    else:
-        logger.info("Running on Vercel (Scheduler Disabled) - Using Vercel Cron")
+    # 3. Start Scheduler (Railway runs 24/7 so this works!)
+    logger.info("Starting scheduler...")
+    async with AsyncSessionLocal() as session:
+        notif_service = NotificationService(firms, line, session)
+        app.state.scheduler = SchedulerService(notif_service)
+        app.state.scheduler.start()
     
     logger.info("Application startup complete.")
     yield

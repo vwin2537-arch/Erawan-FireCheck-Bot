@@ -50,7 +50,7 @@
 
         <section class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="px-8 py-6 border-b border-gray-50 flex justify-between items-center">
-                <h2 class="text-xl font-bold">ข้อมูลจุดความร้อนล่าสุด (วันนี้)</h2>
+                <h2 class="text-xl font-bold">ข้อมูลจุดความร้อนล่าสุด (วันนี้และเมื่อวาน)</h2>
                 <span class="text-sm text-gray-400">อัพเดทอัตโนมัติ</span>
             </div>
             <div class="overflow-x-auto">
@@ -77,9 +77,10 @@
             try {
                 const response = await fetch('/api/hotspots/today');
                 if (!response.ok) throw new Error('API Error');
-                const hotspots = await response.json();
+                const data = await response.json();
+                const hotspots = data.hotspots;
 
-                document.getElementById('todayCount').innerText = `${hotspots.length} จุด`;
+                document.getElementById('todayCount').innerText = `${data.today_count} จุด`;
 
                 const table = document.getElementById('hotspotTable');
                 table.innerHTML = hotspots.length > 0

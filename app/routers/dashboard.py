@@ -30,14 +30,23 @@ async def get_hotspots_today(db: AsyncSession = Depends(get_db)):
     # Use Thai timezone to get today's date
     thai_now = datetime.now(THAI_TZ)
     today = thai_now.date()
+    yesterday = today - timedelta(days=1)
     
-    # Filter strictly for today according to user request
+    # Get hotspots from today AND yesterday to handle day transition and ensure accuracy
     stmt = select(Hotspot).where(
-        Hotspot.acq_date == today
-    ).order_by(desc(Hotspot.acq_time))
+        or_(Hotspot.acq_date == today, Hotspot.acq_date == yesterday)
+    ).order_by(desc(Hotspot.acq_date), desc(Hotspot.acq_time))
     
     result = await db.execute(stmt)
-    return result.scalars().all()
+    hotspots = result.scalars().all()
+    
+    # Calculate today's count strictly for the summary card
+    today_count = sum(1 for h in hotspots if h.acq_date == today)
+    
+    return {
+        "today_count": today_count,
+        "hotspots": hotspots
+    }
 
 @router.get("/notifications")
 async def get_notifications(limit: int = 50, db: AsyncSession = Depends(get_db)):

@@ -76,6 +76,7 @@
         async function loadData() {
             try {
                 const response = await fetch('/api/hotspots/today');
+                if (!response.ok) throw new Error('API Error');
                 const hotspots = await response.json();
 
                 document.getElementById('todayCount').innerText = `${hotspots.length} จุด`;
@@ -85,26 +86,30 @@
                     ? hotspots.map(h => `
                         <tr>
                             <td class="px-8 py-4 font-mono text-sm">${h.latitude.toFixed(4)}, ${h.longitude.toFixed(4)}</td>
-                            <td class="px-8 py-4">${h.acq_time.substring(0, 5)} น. (${h.acq_date})</td>
+                            <td class="px-8 py-4">${h.acq_time.substring(0, 2)}:${h.acq_time.substring(2, 4)} น. (${h.acq_date})</td>
                             <td class="px-8 py-4"><span class="bg-blue-50 text-blue-600 px-2 py-1 rounded text-xs font-bold">${h.satellite}</span></td>
                             <td class="px-8 py-4">${h.confidence}</td>
                             <td class="px-8 py-4 font-semibold">${h.frp.toFixed(2)}</td>
                         </tr>
                     `).join('')
-                    : '<tr><td colspan="5" class="px-8 py-12 text-center text-gray-400">ไม่พบจุดความร้อนในขณะที่</td></tr>';
+                    : '<tr><td colspan="5" class="px-8 py-12 text-center text-gray-400">ไม่พบจุดความร้อนในพื้นที่</td></tr>';
 
                 // Load last log
                 const logRes = await fetch('/api/logs?limit=1');
-                const logs = await logRes.json();
-                if (logs.length > 0) {
-                    const log = logs[0];
-                    const date = new Date(log.checked_at);
-                    document.getElementById('lastCheck').innerText = date.toLocaleTimeString('th-TH');
-                } else {
-                    document.getElementById('lastCheck').innerText = "ยังไม่มีข้อมูล";
+                if (logRes.ok) {
+                    const logs = await logRes.json();
+                    if (logs.length > 0) {
+                        const log = logs[0];
+                        const date = new Date(log.checked_at);
+                        document.getElementById('lastCheck').innerText = date.toLocaleTimeString('th-TH');
+                    } else {
+                        document.getElementById('lastCheck').innerText = "ยังไม่มีข้อมูล";
+                    }
                 }
             } catch (error) {
                 console.error('Error loading dashboard data:', error);
+                document.getElementById('todayCount').innerText = "error";
+                document.getElementById('hotspotTable').innerHTML = '<tr><td colspan="5" class="px-8 py-12 text-center text-red-400">เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>';
             }
         }
 

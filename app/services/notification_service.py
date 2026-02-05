@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -36,8 +36,8 @@ class NotificationService:
             total_found = len(hotspots_data)
             
             # 1.5. Filter to only include today's data (Thailand timezone)
-            from zoneinfo import ZoneInfo
-            today_th = datetime.now(tz=ZoneInfo("Asia/Bangkok")).date()
+            th_tz = timezone(timedelta(hours=7))
+            today_th = datetime.now(th_tz).date()
             today_hotspots = []
             for h in hotspots_data:
                 # h["acq_date"] is already in Thailand time (converted in firms_service)

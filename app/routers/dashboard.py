@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, or_
 from typing import List
 from ..database import get_db
 from ..models import Hotspot, Notification, CheckLog, Setting
@@ -33,10 +33,10 @@ async def get_hotspots_today(db: AsyncSession = Depends(get_db)):
     yesterday = today - timedelta(days=1)
     
     # Get hotspots from today AND yesterday to handle day transition
-    from sqlalchemy import or_
     stmt = select(Hotspot).where(
         or_(Hotspot.acq_date == today, Hotspot.acq_date == yesterday)
     ).order_by(desc(Hotspot.acq_date), desc(Hotspot.acq_time))
+    
     result = await db.execute(stmt)
     return result.scalars().all()
 

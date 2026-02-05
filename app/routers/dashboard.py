@@ -27,10 +27,16 @@ async def get_hotspots(limit: int = 100, db: AsyncSession = Depends(get_db)):
 
 @router.get("/hotspots/today")
 async def get_hotspots_today(db: AsyncSession = Depends(get_db)):
-    # Use Thai timezone to get today's date
+    # Use Thai timezone to get today's and yesterday's date
     thai_now = datetime.now(THAI_TZ)
     today = thai_now.date()
-    stmt = select(Hotspot).where(Hotspot.acq_date == today).order_by(desc(Hotspot.acq_time))
+    yesterday = today - timedelta(days=1)
+    
+    # Get hotspots from today AND yesterday to handle day transition
+    from sqlalchemy import or_
+    stmt = select(Hotspot).where(
+        or_(Hotspot.acq_date == today, Hotspot.acq_date == yesterday)
+    ).order_by(desc(Hotspot.acq_date), desc(Hotspot.acq_time))
     result = await db.execute(stmt)
     return result.scalars().all()
 

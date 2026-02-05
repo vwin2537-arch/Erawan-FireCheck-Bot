@@ -35,20 +35,12 @@ class NotificationService:
             hotspots_data = await self.firms.get_all_sources()
             total_found = len(hotspots_data)
             
-            # 1.5. Filter to only include today's data (Thailand timezone)
-            th_tz = timezone(timedelta(hours=7))
-            today_th = datetime.now(th_tz).date()
-            today_hotspots = []
-            for h in hotspots_data:
-                # h["acq_date"] is already in Thailand time (converted in firms_service)
-                try:
-                    hotspot_date = datetime.strptime(h["acq_date"], "%Y-%m-%d").date()
-                    if hotspot_date == today_th:
-                        today_hotspots.append(h)
-                except (ValueError, KeyError):
-                    continue
+            # 1.5. No longer filtering by 'today' here to ensure we catch all 24h data
+            # The API call already limits to 24h (day_range=1)
+            # We want to save and potentially notify all hotspots returned
+            today_hotspots = hotspots_data
             
-            logger.info(f"Filtered to {len(today_hotspots)}/{total_found} hotspots from today ({today_th})")
+            logger.info(f"Processing {len(today_hotspots)} hotspots from API")
             hotspots_data = today_hotspots
             
             # 2. Filter new hotspots (checking against DB)

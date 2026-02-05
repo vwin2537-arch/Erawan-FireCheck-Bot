@@ -38,6 +38,12 @@ class SchedulerService:
         # Track if we already went to early sleep
         self.early_sleep_sent = False
         
+        # Track current date to reset data at midnight
+        self.current_date = None
+        
+        # Track if we're currently in a peak period (to detect period start)
+        self.was_in_peak = False
+        
     def start(self):
         """Start the scheduler with adaptive intervals"""
         # Main check job (runs every minute during peak hours)
@@ -73,8 +79,21 @@ class SchedulerService:
         based on current peak/off-peak settings.
         """
         now = datetime.now(tz=ZoneInfo(settings.TIMEZONE))
+        today = now.date()
+        
+        # Reset data at midnight (when date changes)
+        if self.current_date is not None and self.current_date != today:
+            logger.info(f"Date changed from {self.current_date} to {today}, resetting satellite data")
+            self._reset_period_state()
+        self.current_date = today
         
         is_peak = self.is_peak_time(now)
+        
+        # Detect when we enter a new peak period and reset data
+        if is_peak and not self.was_in_peak:
+            logger.info(f"Entering new peak period at {now.strftime('%H:%M')}, resetting satellite data")
+            self._reset_period_state()
+        self.was_in_peak = is_peak
         
         # User requested to ONLY check during peak hours to save resources
         if not is_peak:

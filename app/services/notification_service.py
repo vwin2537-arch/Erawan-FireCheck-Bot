@@ -35,6 +35,22 @@ class NotificationService:
             hotspots_data = await self.firms.get_all_sources()
             total_found = len(hotspots_data)
             
+            # 1.5. Filter to only include today's data (Thailand timezone)
+            from zoneinfo import ZoneInfo
+            today_th = datetime.now(tz=ZoneInfo("Asia/Bangkok")).date()
+            today_hotspots = []
+            for h in hotspots_data:
+                # h["acq_date"] is already in Thailand time (converted in firms_service)
+                try:
+                    hotspot_date = datetime.strptime(h["acq_date"], "%Y-%m-%d").date()
+                    if hotspot_date == today_th:
+                        today_hotspots.append(h)
+                except (ValueError, KeyError):
+                    continue
+            
+            logger.info(f"Filtered to {len(today_hotspots)}/{total_found} hotspots from today ({today_th})")
+            hotspots_data = today_hotspots
+            
             # 2. Filter new hotspots (checking against DB)
             new_hotspots_data = await self.filter_new_hotspots(hotspots_data)
             new_count = len(new_hotspots_data)
@@ -82,8 +98,8 @@ class NotificationService:
                 
                 if target_to:
                     try:
-                        # Use new satellite-based text message format
-                        await self.line.send_satellite_alert(target_to, satellites_for_alert)
+                        # NOTE: Message sending is now handled by scheduler_service._send_cumulative_update()
+                        # to avoid duplicate messages. We just log the notification here.
                         notification_sent = True
                         
                         # Log notification

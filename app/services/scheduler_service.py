@@ -89,10 +89,8 @@ class SchedulerService:
         
         is_peak = self.is_peak_time(now)
         
-        # Detect when we enter a new peak period and reset data
-        if is_peak and not self.was_in_peak:
-            logger.info(f"Entering new peak period at {now.strftime('%H:%M')}, resetting satellite data")
-            self._reset_period_state()
+        # Track peak state (but don't reset - we want to accumulate data throughout the day)
+        # Data resets only at midnight when date changes
         self.was_in_peak = is_peak
         
         # User requested to ONLY check during peak hours to save resources

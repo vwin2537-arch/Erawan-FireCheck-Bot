@@ -59,6 +59,13 @@ async def trigger_check(db: AsyncSession = Depends(get_db)):
     notif_service = NotificationService(firms, line, db)
     
     result = await notif_service.check_and_notify()
+    
+    # Add total count in DB for debugging
+    from sqlalchemy import func
+    stmt = select(func.count()).select_from(Hotspot)
+    count_res = await db.execute(stmt)
+    result["total_in_db"] = count_res.scalar()
+    
     return result
 
 @router.post("/settings")

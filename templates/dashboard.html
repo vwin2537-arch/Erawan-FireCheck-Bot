@@ -123,7 +123,7 @@
             try {
                 const response = await fetch('/api/check-now', { method: 'POST' });
                 const result = await response.json();
-                alert(`เช็คข้อมูลล่าสุดเรียบร้อย!\n\n- พบจุดใหม่เพิ่ม: ${result.new_hotspots} จุด\n- ข้อมูลจากดาวเทียมทั้งหมด: ${result.hotspots_found} จุด`);
+                alert(`เช็คข้อมูลล่าสุดเรียบร้อย!\n\n- พบจุดใหม่เพิ่ม: ${result.new_hotspots} จุด\n- ข้อมูลจากดาวเทียมล่าสุด: ${result.hotspots_found} จุด\n- ข้อมูลทั้งหมดในระบบ: ${result.total_in_db} จุด`);
                 loadData();
             } catch (error) {
                 alert('เกิดข้อผิดพลาดในการตรวจสอบ');

@@ -30,14 +30,14 @@ class FIRMSService:
     async def get_hotspots(
         self,
         source: str = "VIIRS_SNPP_NRT",
-        day_range: int = 1
+        day_range: int = 2
     ) -> List[Dict[str, Any]]:
         """
         Fetch hotspots from FIRMS API for a specific source
         """
         url = f"{self.BASE_URL}/{self.map_key}/{source}/{self.area}/{day_range}"
         
-        logger.info(f"Fetching hotspots from FIRMS: {source}")
+        logger.info(f"Fetching hotspots from FIRMS: {source} (range: {day_range})")
         
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -58,7 +58,7 @@ class FIRMSService:
             logger.error(f"Unexpected error fetching FIRMS data: {e}")
             return []
 
-    async def get_all_sources(self, day_range: int = 1) -> List[Dict[str, Any]]:
+    async def get_all_sources(self, day_range: int = 2) -> List[Dict[str, Any]]:
         """
         Fetch from all VIIRS sources and combine
         """

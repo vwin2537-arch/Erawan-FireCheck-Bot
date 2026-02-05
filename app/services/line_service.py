@@ -72,13 +72,14 @@ class LINEService:
         Send a text-based alert with satellite breakdown
         satellites_data format: {"VIIRS_SNPP": {"count": 3, "time": "12:45"}, ...}
         """
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
+        from datetime import datetime, timezone, timedelta
         
         if all_satellites is None:
             all_satellites = ["VIIRS_SNPP", "VIIRS_NOAA20", "VIIRS_NOAA21"]
         
-        now = datetime.now(tz=ZoneInfo(settings.TIMEZONE))
+        # Robust Thai timezone (UTC+7)
+        thai_tz = timezone(timedelta(hours=7))
+        now = datetime.now(thai_tz)
         
         # Build satellite summary lines
         sat_lines = []
@@ -93,6 +94,8 @@ class LINEService:
         # Count how many satellites reported
         reported_count = len(satellites_data)
         
+        logger.info(f"Preparing satellite alert: total={total}, sats={reported_count}")
+        
         message_text = f"""🔥 แจ้งเตือนจุดความร้อน
 📅 {now.strftime('%d/%m/%Y %H:%M')}
 ━━━━━━━━━━━━━━━━
@@ -101,6 +104,7 @@ class LINEService:
 📍 รวม: {total} จุด ({reported_count}/{len(all_satellites)} ดาวเทียม)
 🏔️ พื้นที่: กาญจนบุรี"""
 
+        logger.debug(f"Message to send: {message_text}")
         message = TextMessage(text=message_text)
         await self.push_message(to, [message])
 

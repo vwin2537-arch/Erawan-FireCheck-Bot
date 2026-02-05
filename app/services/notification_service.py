@@ -88,23 +88,27 @@ class NotificationService:
                             sat_time_str = st_str[:5]
                     satellites_found[sat]["time"] = sat_time_str
                 
-                # Fetch target group ID
-                target_to = settings.LINE_GROUP_ID.strip() if settings.LINE_GROUP_ID else None
+                # Fetch target group ID - call get_settings locally to ensure fresh values
+                current_settings = get_settings()
+                target_to = current_settings.LINE_GROUP_ID.strip() if current_settings.LINE_GROUP_ID else None
+                
                 if not target_to:
+                    logger.info("LINE_GROUP_ID not in env, checking database...")
                     res = await self.db.execute(select(Setting).where(Setting.key == 'line_group_id'))
                     setting = res.scalar_one_or_none()
                     if setting:
                         target_to = setting.value
                 
-                logger.info(f"Target LINE destination: {target_to}")
+                logger.info(f"Final target LINE destination: '{target_to}'")
                 
                 if target_to:
                     try:
                         # If manual, send alert immediately here
                         if manual_trigger:
-                            logger.info(f"Sending manual alert to LINE for {notify_count} points")
+                            logger.info(f"Attempting to send manual alert to LINE for {notify_count} points...")
                             await self.line_service.send_satellite_alert(target_to, satellites_found)
                             notification_sent = True
+                            logger.info("Manual alert sent successfully.")
                         
                         # Log notification in DB
                         notif_log = Notification(
@@ -121,9 +125,9 @@ class NotificationService:
                             obj.notified_at = datetime.now()
                             
                     except Exception as e:
-                        logger.error(f"Failed to send LINE notification: {e}")
+                        logger.error(f"EXCEPTION sending LINE notification: {e}", exc_info=True)
                 else:
-                    logger.warning("No LINE_GROUP_ID found, skipping notification")
+                    logger.warning("CRITICAL: No target_to found for notification!")
             
             # 5. Log the check
             duration = int((datetime.now() - start_time).total_seconds() * 1000)

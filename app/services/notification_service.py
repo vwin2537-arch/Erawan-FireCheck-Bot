@@ -20,7 +20,7 @@ class NotificationService:
         db_session: AsyncSession
     ):
         self.firms = firms_service
-        self.line = line_service
+        self.line_service = line_service
         self.db = db_session
         
     async def check_and_notify(self, manual_trigger: bool = False) -> Dict[str, Any]:

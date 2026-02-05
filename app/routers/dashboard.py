@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, or_
 from typing import List
 from ..database import get_db
+from ..config import get_settings
 from ..models import Hotspot, Notification, CheckLog, Setting
 from ..services.notification_service import NotificationService
 from ..services.firms_service import FIRMSService
@@ -43,16 +44,22 @@ async def get_hotspots_today(db: AsyncSession = Depends(get_db)):
     # Standardize time format for JS to display easily
     hotspots = []
     for h in hotspots_raw:
-        time_str = h.acq_time
-        if time_str and ":" not in time_str and len(time_str) == 4:
-            time_str = f"{time_str[:2]}:{time_str[2:]}"
+        # Robust time string extraction
+        if hasattr(h.acq_time, "strftime"):
+            time_display = h.acq_time.strftime("%H:%M")
+        else:
+            ts = str(h.acq_time or "")
+            if len(ts) == 4 and ":" not in ts:
+                time_display = f"{ts[:2]}:{ts[2:]}"
+            else:
+                time_display = ts[:5]
         
         hotspots.append({
             "id": h.id,
             "latitude": h.latitude,
             "longitude": h.longitude,
             "acq_date": str(h.acq_date),
-            "acq_time": time_str,
+            "acq_time": time_display,
             "satellite": h.satellite,
             "confidence": h.confidence,
             "frp": h.frp
@@ -71,16 +78,14 @@ async def get_logs(limit: int = 100, db: AsyncSession = Depends(get_db)):
     stmt = select(CheckLog).order_by(desc(CheckLog.checked_at)).limit(limit)
     result = await db.execute(stmt)
     logs = result.scalars().all()
-    # Add Z to end of checked_at to help JS understand it's UTC
     return [{
-        "checked_at": l.checked_at.isoformat() + "Z",
+        "checked_at": l.checked_at.isoformat() if l.checked_at else datetime.now().isoformat(),
         "status": l.status,
         "hotspots_found": l.hotspots_found
     } for l in logs]
 
 @router.post("/test-line")
 async def test_line():
-    from .dashboard import THAI_TZ
     line = LINEService()
     settings = get_settings()
     target = settings.LINE_GROUP_ID.strip() if settings.LINE_GROUP_ID else None

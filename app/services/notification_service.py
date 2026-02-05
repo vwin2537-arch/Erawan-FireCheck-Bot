@@ -23,12 +23,12 @@ class NotificationService:
         self.line = line_service
         self.db = db_session
         
-    async def check_and_notify(self) -> Dict[str, Any]:
+    async def check_and_notify(self, manual_trigger: bool = False) -> Dict[str, Any]:
         """
         Main check routine: fetch, filter, save, and notify
         """
         start_time = datetime.now()
-        logger.info(f"Starting check-and-notify routine at {start_time}")
+        logger.info(f"Starting {'manual' if manual_trigger else 'scheduled'} check-and-notify routine at {start_time}")
         
         try:
             # 1. Fetch from FIRMS
@@ -36,22 +36,19 @@ class NotificationService:
             total_found = len(hotspots_data)
             
             # 1.5. No longer filtering by 'today' here to ensure we catch all 24h data
-            # The API call already limits to 24h (day_range=1)
+            # The API call already limits to 24h (day_range=2 now)
             # We want to save and potentially notify all hotspots returned
             today_hotspots = hotspots_data
             
             logger.info(f"Processing {len(today_hotspots)} hotspots from API")
-            hotspots_data = today_hotspots
             
             # 2. Filter new hotspots (checking against DB)
-            new_hotspots_data = await self.filter_new_hotspots(hotspots_data)
+            new_hotspots_data = await self.filter_new_hotspots(today_hotspots)
             new_count = len(new_hotspots_data)
             
             # 3. Save new hotspots
             hotspot_objs = []
             for h in new_hotspots_data:
-                # Basic reverse geocoding simulation (real implementation would use geo_utils)
-                # For now, we leave fields empty or use placeholders
                 h["province"] = "กาญจนบุรี" 
                 h["district"] = "-"
                 
@@ -61,28 +58,38 @@ class NotificationService:
             
             await self.db.flush() # Get IDs
             
-            # 4. If new hotspots found, notify
+            # 4. Handle Notification
             notification_sent = False
             batch_id = str(uuid.uuid4())
             
-            if new_count > 0:
-                # Build satellites_found for the alert
-                satellites_for_alert = {}
-                for h in new_hotspots_data:
+            # For manual triggers, we might want to notify even if none are "new" to the DB
+            # but usually we notify only if there's SOMETHING to report.
+            # If manual, we notify with ALL current hotspots from the API
+            notify_data = new_hotspots_data if not manual_trigger else hotspots_data
+            notify_count = len(notify_data)
+            
+            if notify_count > 0:
+                # Build satellite summary for the alert
+                satellites_found = {}
+                for h in notify_data:
                     sat = h.get("satellite", "UNKNOWN")
-                    if sat not in satellites_for_alert:
-                        satellites_for_alert[sat] = {"count": 0, "time": ""}
-                    satellites_for_alert[sat]["count"] += 1
+                    if sat not in satellites_found:
+                        satellites_found[sat] = {"count": 0, "time": ""}
+                    satellites_found[sat]["count"] += 1
                     # Use latest time for this satellite
-                    if hasattr(h.get("acq_time"), 'strftime'):
-                        satellites_for_alert[sat]["time"] = h["acq_time"].strftime("%H:%M")
+                    sat_time = h.get("acq_time")
+                    if hasattr(sat_time, 'strftime'):
+                        satellites_found[sat]["time"] = sat_time.strftime("%H:%M")
                     else:
-                        satellites_for_alert[sat]["time"] = str(h.get("acq_time", ""))[:5]
+                        st_str = str(sat_time)
+                        if len(st_str) == 4:
+                            satellites_found[sat]["time"] = f"{st_str[:2]}:{st_str[2:]}"
+                        else:
+                            satellites_found[sat]["time"] = st_str[:5]
                 
-                # Fetch target group ID from settings or env
+                # Fetch target group ID
                 target_to = settings.LINE_GROUP_ID.strip() if settings.LINE_GROUP_ID else None
                 if not target_to:
-                    # Try to get from DB settings
                     res = await self.db.execute(select(Setting).where(Setting.key == 'line_group_id'))
                     setting = res.scalar_one_or_none()
                     if setting:
@@ -90,15 +97,16 @@ class NotificationService:
                 
                 if target_to:
                     try:
-                        # NOTE: Message sending is now handled by scheduler_service._send_cumulative_update()
-                        # to avoid duplicate messages. We just log the notification here.
-                        notification_sent = True
+                        # If manual, send alert immediately here
+                        if manual_trigger:
+                            await self.line_service.send_satellite_alert(target_to, satellites_found)
+                            notification_sent = True
                         
                         # Log notification
                         notif_log = Notification(
                             batch_id=batch_id,
-                            hotspot_count=new_count,
-                            message_text=f"Hotspot Alert: {new_count} points",
+                            hotspot_count=notify_count,
+                            message_text=f"Hotspot Alert ({'Manual' if manual_trigger else 'Auto'}): {notify_count} points",
                             status="sent"
                         )
                         self.db.add(notif_log)
@@ -123,38 +131,36 @@ class NotificationService:
             
             await self.db.commit()
             
-            # Build satellites_found summary for scheduler
-            satellites_found = {}
+            # Re-calculating satellites_found for the returned dict (it's for new hotspots only)
+            new_sats_found = {}
             for h in new_hotspots_data:
                 sat = h.get("satellite", "UNKNOWN")
-                if sat not in satellites_found:
-                    satellites_found[sat] = {"count": 0, "time": ""}
-                satellites_found[sat]["count"] += 1
-                # Use latest time for this satellite
-                if isinstance(h.get("acq_time"), datetime):
-                    satellites_found[sat]["time"] = h["acq_time"].strftime("%H:%M")
-                elif hasattr(h.get("acq_time"), 'strftime'):
-                    satellites_found[sat]["time"] = h["acq_time"].strftime("%H:%M")
+                if sat not in new_sats_found:
+                    new_sats_found[sat] = {"count": 0, "time": ""}
+                new_sats_found[sat]["count"] += 1
+                sat_time = h.get("acq_time")
+                if hasattr(sat_time, 'strftime'):
+                    new_sats_found[sat]["time"] = sat_time.strftime("%H:%M")
                 else:
-                    satellites_found[sat]["time"] = str(h.get("acq_time", ""))[:5]
+                    st_str = str(sat_time)
+                    if len(st_str) == 4:
+                        new_sats_found[sat]["time"] = f"{st_str[:2]}:{st_str[2:]}"
+                    else:
+                        new_sats_found[sat]["time"] = st_str[:5]
             
             return {
                 "checked_at": start_time,
                 "hotspots_found": total_found,
                 "new_hotspots": new_count,
                 "notification_sent": notification_sent,
-                "satellites_found": satellites_found
+                "satellites_found": new_sats_found,
+                "all_satellites_data": satellites_found if manual_trigger else None
             }
             
         except Exception as e:
             await self.db.rollback()
             logger.error(f"Error in check_and_notify: {e}")
-            # Log error
-            error_log = CheckLog(
-                status="error",
-                error_message=str(e)
-            )
-            self.db.add(error_log)
+            self.db.add(CheckLog(status="error", error_message=str(e)))
             await self.db.commit()
             raise
 

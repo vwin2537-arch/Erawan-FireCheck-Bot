@@ -8,9 +8,12 @@ from ..services.notification_service import NotificationService
 from ..services.firms_service import FIRMSService
 from ..services.line_service import LINEService
 from pydantic import BaseModel
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 
 router = APIRouter(prefix="/api", tags=["Dashboard"])
+
+# Thai timezone (UTC+7)
+THAI_TZ = timezone(timedelta(hours=7))
 
 class SettingUpdate(BaseModel):
     key: str
@@ -24,7 +27,9 @@ async def get_hotspots(limit: int = 100, db: AsyncSession = Depends(get_db)):
 
 @router.get("/hotspots/today")
 async def get_hotspots_today(db: AsyncSession = Depends(get_db)):
-    today = date.today()
+    # Use Thai timezone to get today's date
+    thai_now = datetime.now(THAI_TZ)
+    today = thai_now.date()
     stmt = select(Hotspot).where(Hotspot.acq_date == today).order_by(desc(Hotspot.acq_time))
     result = await db.execute(stmt)
     return result.scalars().all()

@@ -1,6 +1,5 @@
 import logging
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta, timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .notification_service import NotificationService
 from .line_service import LINEService
@@ -25,7 +24,9 @@ class SchedulerService:
     
     def __init__(self, notification_service: NotificationService):
         self.notification_service = notification_service
-        self.scheduler = AsyncIOScheduler(timezone=settings.TIMEZONE)
+        # Robust Thai timezone (UTC+7)
+        self.thai_tz = timezone(timedelta(hours=7))
+        self.scheduler = AsyncIOScheduler() # Timezone handled manually in jobs
         self.line_service = LINEService()
         
         # Track cumulative satellite data for the period
@@ -71,14 +72,14 @@ class SchedulerService:
         )
         
         self.scheduler.start()
-        logger.info(f"Scheduler started with timezone {settings.TIMEZONE}")
+        logger.info(f"Scheduler started with robust Thai Timezone (UTC+7)")
         
     async def adaptive_check_trigger(self):
         """
         Called every minute. Decides whether to run the main check
         based on current peak/off-peak settings.
         """
-        now = datetime.now(tz=ZoneInfo(settings.TIMEZONE))
+        now = datetime.now(self.thai_tz)
         today = now.date()
         
         # Reset data at midnight (when date changes)
@@ -106,7 +107,10 @@ class SchedulerService:
                     await self._send_early_sleep_message()
                     self.early_sleep_sent = True
                 return
-
+        
+        # Reset sleep if we're in a new peak and don't have current data
+        # (This handles the case between morning and afternoon peak)
+        
         interval = settings.CHECK_INTERVAL_PEAK
         
         # Run if it's the right minute according to the interval
@@ -150,7 +154,7 @@ class SchedulerService:
             return
             
         try:
-            now = datetime.now(tz=ZoneInfo(settings.TIMEZONE))
+            now = datetime.now(self.thai_tz)
             
             # Build satellite summary lines
             sat_lines = []
@@ -185,7 +189,7 @@ class SchedulerService:
         target = settings.LINE_GROUP_ID.strip() if settings.LINE_GROUP_ID else None
         if target:
             try:
-                now = datetime.now(tz=ZoneInfo(settings.TIMEZONE))
+                now = datetime.now(self.thai_tz)
                 total = sum(d["count"] for d in self.satellite_data.values())
                 message = TextMessage(
                     text=f"😴 บอทเข้าสู่โหมดพักผ่อน\n📅 {now.strftime('%d/%m/%Y %H:%M')}\n✅ ครบ 3 ดาวเทียม พบ {total} จุดความร้อน\n💤 หลับจนถึงรอบถัดไป..."
@@ -223,7 +227,7 @@ class SchedulerService:
             target = settings.LINE_GROUP_ID.strip() if settings.LINE_GROUP_ID else None
             if target:
                 try:
-                    now = datetime.now(tz=ZoneInfo(settings.TIMEZONE))
+                    now = datetime.now(self.thai_tz)
                     message = TextMessage(
                         text=f"✅ บอทตรวจสอบ {period_name} เรียบร้อย\n📅 {now.strftime('%d/%m/%Y')}\n🔍 ไม่พบจุดความร้อนในพื้นที่"
                     )
@@ -239,8 +243,9 @@ class SchedulerService:
         """Check if target time falls within any peak windows"""
         current_time = dt.time()
         for start_h, start_m, end_h, end_m in self.PEAK_HOURS:
-            start = datetime.strptime(f"{start_h}:{start_m}", "%H:%M").time()
-            end = datetime.strptime(f"{end_h}:{end_m}", "%H:%M").time()
+            from datetime import time
+            start = time(start_h, start_m)
+            end = time(end_h, end_m)
             if start <= current_time <= end:
                 return True
         return False

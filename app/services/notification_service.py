@@ -61,16 +61,16 @@ class NotificationService:
             # 4. Handle Notification
             notification_sent = False
             batch_id = str(uuid.uuid4())
+            satellites_found = {} # Initialize to avoid UnboundLocalError
             
-            # For manual triggers, we might want to notify even if none are "new" to the DB
-            # but usually we notify only if there's SOMETHING to report.
-            # If manual, we notify with ALL current hotspots from the API
+            # For manual triggers, we notify with ALL current hotspots from the API
             notify_data = new_hotspots_data if not manual_trigger else hotspots_data
             notify_count = len(notify_data)
             
+            logger.info(f"Notification check: manual={manual_trigger}, count={notify_count}")
+            
             if notify_count > 0:
                 # Build satellite summary for the alert
-                satellites_found = {}
                 for h in notify_data:
                     sat = h.get("satellite", "UNKNOWN")
                     if sat not in satellites_found:
@@ -79,13 +79,14 @@ class NotificationService:
                     # Use latest time for this satellite
                     sat_time = h.get("acq_time")
                     if hasattr(sat_time, 'strftime'):
-                        satellites_found[sat]["time"] = sat_time.strftime("%H:%M")
+                        sat_time_str = sat_time.strftime("%H:%M")
                     else:
                         st_str = str(sat_time)
                         if len(st_str) == 4:
-                            satellites_found[sat]["time"] = f"{st_str[:2]}:{st_str[2:]}"
+                            sat_time_str = f"{st_str[:2]}:{st_str[2:]}"
                         else:
-                            satellites_found[sat]["time"] = st_str[:5]
+                            sat_time_str = st_str[:5]
+                    satellites_found[sat]["time"] = sat_time_str
                 
                 # Fetch target group ID
                 target_to = settings.LINE_GROUP_ID.strip() if settings.LINE_GROUP_ID else None
@@ -95,14 +96,17 @@ class NotificationService:
                     if setting:
                         target_to = setting.value
                 
+                logger.info(f"Target LINE destination: {target_to}")
+                
                 if target_to:
                     try:
                         # If manual, send alert immediately here
                         if manual_trigger:
+                            logger.info(f"Sending manual alert to LINE for {notify_count} points")
                             await self.line_service.send_satellite_alert(target_to, satellites_found)
                             notification_sent = True
                         
-                        # Log notification
+                        # Log notification in DB
                         notif_log = Notification(
                             batch_id=batch_id,
                             hotspot_count=notify_count,
@@ -118,6 +122,8 @@ class NotificationService:
                             
                     except Exception as e:
                         logger.error(f"Failed to send LINE notification: {e}")
+                else:
+                    logger.warning("No LINE_GROUP_ID found, skipping notification")
             
             # 5. Log the check
             duration = int((datetime.now() - start_time).total_seconds() * 1000)

@@ -60,6 +60,7 @@ class NotificationService:
             
             # 4. Handle Notification
             notification_sent = False
+            notif_error = None
             batch_id = str(uuid.uuid4())
             satellites_found = {} # Initialize to avoid UnboundLocalError
             
@@ -125,8 +126,10 @@ class NotificationService:
                             obj.notified_at = datetime.now()
                             
                     except Exception as e:
+                        notif_error = str(e)
                         logger.error(f"EXCEPTION sending LINE notification: {e}", exc_info=True)
                 else:
+                    notif_error = "No LINE_GROUP_ID configured"
                     logger.warning("CRITICAL: No target_to found for notification!")
             
             # 5. Log the check
@@ -163,6 +166,7 @@ class NotificationService:
                 "hotspots_found": total_found,
                 "new_hotspots": new_count,
                 "notification_sent": notification_sent,
+                "notification_error": notif_error,
                 "satellites_found": new_sats_found,
                 "all_satellites_data": satellites_found if manual_trigger else None
             }

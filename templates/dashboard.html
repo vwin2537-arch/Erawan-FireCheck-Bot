@@ -135,6 +135,9 @@
                 msg += `- ดาวเทียมล่าสุด: ${result.hotspots_found} จุด\n`;
                 msg += `- พบจุดใหม่เพิ่ม: ${result.new_hotspots} จุด\n`;
                 msg += `- ส่งแจ้งเตือน LINE: ${result.notification_sent ? '✅ สำเร็จ' : '❌ ไม่ได้ส่ง'}\n`;
+                if (result.notification_error) {
+                    msg += `- สาเหตุที่ไม่ส่ง: ${result.notification_error}\n`;
+                }
                 msg += `- ข้อมูลทั้งหมดในระบบ: ${result.total_in_db} จุด\n`;
 
                 if (result.all_satellites_data) {

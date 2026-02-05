@@ -32,33 +32,71 @@ async def get_hotspots_today(db: AsyncSession = Depends(get_db)):
     today = thai_now.date()
     yesterday = today - timedelta(days=1)
     
-    # Get hotspots from today AND yesterday to handle day transition and ensure accuracy
+    # Get hotspots from today AND yesterday
     stmt = select(Hotspot).where(
         or_(Hotspot.acq_date == today, Hotspot.acq_date == yesterday)
     ).order_by(desc(Hotspot.acq_date), desc(Hotspot.acq_time))
     
     result = await db.execute(stmt)
-    hotspots = result.scalars().all()
+    hotspots_raw = result.scalars().all()
+    
+    # Standardize time format for JS to display easily
+    hotspots = []
+    for h in hotspots_raw:
+        time_str = h.acq_time
+        if time_str and ":" not in time_str and len(time_str) == 4:
+            time_str = f"{time_str[:2]}:{time_str[2:]}"
+        
+        hotspots.append({
+            "id": h.id,
+            "latitude": h.latitude,
+            "longitude": h.longitude,
+            "acq_date": str(h.acq_date),
+            "acq_time": time_str,
+            "satellite": h.satellite,
+            "confidence": h.confidence,
+            "frp": h.frp
+        })
     
     # Calculate today's count strictly for the summary card
-    today_count = sum(1 for h in hotspots if h.acq_date == today)
+    today_count = sum(1 for h in hotspots if h["acq_date"] == str(today))
     
     return {
         "today_count": today_count,
         "hotspots": hotspots
     }
 
-@router.get("/notifications")
-async def get_notifications(limit: int = 50, db: AsyncSession = Depends(get_db)):
-    stmt = select(Notification).order_by(desc(Notification.sent_at)).limit(limit)
-    result = await db.execute(stmt)
-    return result.scalars().all()
-
 @router.get("/logs")
 async def get_logs(limit: int = 100, db: AsyncSession = Depends(get_db)):
     stmt = select(CheckLog).order_by(desc(CheckLog.checked_at)).limit(limit)
     result = await db.execute(stmt)
-    return result.scalars().all()
+    logs = result.scalars().all()
+    # Add Z to end of checked_at to help JS understand it's UTC
+    return [{
+        "checked_at": l.checked_at.isoformat() + "Z",
+        "status": l.status,
+        "hotspots_found": l.hotspots_found
+    } for l in logs]
+
+@router.post("/test-line")
+async def test_line():
+    from .dashboard import THAI_TZ
+    line = LINEService()
+    settings = get_settings()
+    target = settings.LINE_GROUP_ID.strip() if settings.LINE_GROUP_ID else None
+    
+    if not target:
+        return {"status": "error", "message": "LINE_GROUP_ID not configured"}
+    
+    now = datetime.now(THAI_TZ)
+    from linebot.v3.messaging import TextMessage
+    message = TextMessage(text=f"🔔 ทดสอบการทำงานของบอท\n📅 เวลา: {now.strftime('%H:%M:%S')}\n✅ บอทเชื่อมต่อกับระบบ Dashboard เรียบร้อยแล้ว")
+    
+    try:
+        await line.push_message(target, [message])
+        return {"status": "success"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @router.post("/check-now")
 async def trigger_check(db: AsyncSession = Depends(get_db)):

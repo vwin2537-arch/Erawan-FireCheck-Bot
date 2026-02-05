@@ -94,13 +94,25 @@ async def test_line():
         return {"status": "error", "message": "LINE_GROUP_ID not configured"}
     
     now = datetime.now(THAI_TZ)
+    
+    # Simulated/Mock data to show how it looks in reality
+    message_text = f"""🔔 [ทดสอบระบบ] แจ้งเตือนจุดความร้อน
+📅 {now.strftime('%d/%m/%Y %H:%M')}
+━━━━━━━━━━━━━━━━
+🛰️ SNPP - 2 จุด (ถ่าย 01:25)
+🛰️ NOAA20 - 1 จุด (ถ่าย 02:11)
+━━━━━━━━━━━━━━━━
+📍 รวมจำลอง: 3 จุด (2/3 ดาวเทียม)
+🏔️ พื้นที่: กาญจนบุรี (Simulation)"""
+    
     from linebot.v3.messaging import TextMessage
-    message = TextMessage(text=f"🔔 ทดสอบการทำงานของบอท\n📅 เวลา: {now.strftime('%H:%M:%S')}\n✅ บอทเชื่อมต่อกับระบบ Dashboard เรียบร้อยแล้ว")
+    message = TextMessage(text=message_text)
     
     try:
         await line.push_message(target, [message])
         return {"status": "success"}
     except Exception as e:
+        logger.error(f"Test LINE failed: {e}")
         return {"status": "error", "message": str(e)}
 
 @router.post("/check-now")
